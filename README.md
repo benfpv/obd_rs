@@ -12,6 +12,10 @@ G-force, inferred braking).
 
 ---
 
+<img width="2083" height="1306" alt="Screenshot 2026-04-11 233335" src="https://github.com/user-attachments/assets/03be64f2-d899-40f4-8c88-e81fcdb66db2" />
+
+---
+
 ## Quick start
 
 ```bash
