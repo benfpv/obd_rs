@@ -1,0 +1,7 @@
+# Runtime
+opencv-python>=4.10.0
+numpy>=1.26.0
+bleak>=0.22.0
+
+# Development / testing
+pytest>=8.0.0
