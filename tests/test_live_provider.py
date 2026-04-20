@@ -28,7 +28,12 @@ def _make_provider(
     client.read_active_dtcs = AsyncMock(return_value=[])
     client.read_pending_dtcs = AsyncMock(return_value=[])
     client.pid_groups = MagicMock(
-        return_value={"high": HIGH_PIDS, "medium": MEDIUM_PIDS, "low": LOW_PIDS},
+        return_value={
+            "high": HIGH_PIDS,
+            "medium": MEDIUM_PIDS,
+            "low": LOW_PIDS,
+            "extended": EXTENDED_PIDS,
+        },
     )
 
     provider = LiveTelemetryProvider(adapter, client)
@@ -102,13 +107,6 @@ async def test_query_pid_returns_none_on_client_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_extended_field_names() -> None:
-    provider, _adapter, _client = _make_provider()
-    names = provider.extended_field_names()
-    assert names == [pid.name for pid in EXTENDED_PIDS]
-
-
-@pytest.mark.asyncio
 async def test_extended_support_reflects_probe() -> None:
     provider, adapter, client = _make_provider()
 
@@ -128,8 +126,7 @@ async def test_extended_support_reflects_probe() -> None:
         assert support[pid.name] is False
 
 
-@pytest.mark.asyncio
-async def test_read_extended_telemetry_uses_support_map() -> None:
+def test_pid_groups_filter_extended_support() -> None:
     provider, _adapter, client = _make_provider()
 
     # Manually set support — first supported, rest not.
@@ -138,15 +135,12 @@ async def test_read_extended_telemetry_uses_support_map() -> None:
     for pid in EXTENDED_PIDS[1:]:
         provider._extended_support[pid.name] = False
 
-    client.try_query_pid = AsyncMock(return_value=99.0)
+    groups = provider.pid_groups()
 
-    values = await provider.read_extended_telemetry()
-
-    # Only the supported PID should be queried.
-    client.try_query_pid.assert_awaited_once_with(first)
-    assert values[first.name] == 99.0
-    for pid in EXTENDED_PIDS[1:]:
-        assert values[pid.name] is None
+    assert groups["high"] == HIGH_PIDS
+    assert groups["medium"] == MEDIUM_PIDS
+    assert groups["low"] == LOW_PIDS
+    assert groups["extended"] == [first]
 
 
 def test_comm_stats_delegates_to_adapter() -> None:

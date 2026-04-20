@@ -12,7 +12,6 @@ from .buffer import SampleRingBuffer, TelemetrySample
 from .config import (
     DTC_READ_INTERVAL_S,
     DataSource,
-    EXTENDED_READ_INTERVAL_S,
     FPS,
     LOG_MIN_SIGNAL_FIELDS,
     LogMode,
@@ -54,7 +53,6 @@ class ObdDashboardApp:
         self._dtcs_active: list[str] = []
         self._dtcs_pending: list[str] = []
         self._next_dtc_read = 0.0
-        self._next_extended_read = 0.0
         self._next_reconnect = 0.0
 
     @staticmethod
@@ -168,18 +166,6 @@ class ObdDashboardApp:
                 _log.error("DTC read unexpected error: %s: %s", type(exc).__name__, exc)
             self._next_dtc_read = now + DTC_READ_INTERVAL_S
 
-        if now >= self._next_extended_read:
-            try:
-                extended = await self.provider.read_extended_telemetry()
-                self._apply_extended_values(now, extended)
-            except (OSError, RuntimeError) as exc:
-                _log.error("extended telemetry read failed: %s", exc)
-                self._mark_extended_stale()
-            except Exception as exc:
-                _log.error("extended read unexpected error: %s: %s", type(exc).__name__, exc)
-                self._mark_extended_stale()
-            self._next_extended_read = now + EXTENDED_READ_INTERVAL_S
-
     def _process(self, now_wall: float, conn: ConnectionStatus) -> DerivedTelemetry:
         self.alerts.update_from_state(self.telemetry, self._dtcs_active, self._dtcs_pending)
         derived = self.processor.process(self.telemetry)
@@ -204,27 +190,6 @@ class ObdDashboardApp:
             if key in _TELEMETRY_FIELDS:
                 sig = getattr(self.telemetry, key)
                 sig.supported = bool(supported)
-
-    def _apply_extended_values(self, ts: float, values: dict[str, Optional[float]]) -> None:
-        for key, value in values.items():
-            if key not in _TELEMETRY_FIELDS:
-                continue
-            sig = getattr(self.telemetry, key)
-            if value is None:
-                sig.value = None
-                sig.stale = True
-                continue
-            sig.value = float(value)
-            sig.timestamp = ts
-            sig.stale = False
-            sig.confidence = 1.0
-
-    def _mark_extended_stale(self) -> None:
-        """Mark all extended-group signals stale after a read failure."""
-        for name in self.provider.extended_field_names():
-            if name in _TELEMETRY_FIELDS:
-                sig = getattr(self.telemetry, name)
-                sig.stale = True
 
     def _capture_sample(self, ts: float, conn: ConnectionStatus, derived: DerivedTelemetry) -> None:
         values: dict[str, float] = {}

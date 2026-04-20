@@ -5,10 +5,10 @@ import time
 import pytest
 
 from obd_rs.ble_adapter import ConnectionStatus
-from obd_rs.config import LogMode
+from obd_rs.config import LogMode, PollCadence
 from obd_rs.logging_policy import LoggingPolicy
 from obd_rs.models import TelemetryState
-from obd_rs.obd_client import HIGH_PIDS, LOW_PIDS, MEDIUM_PIDS, PID
+from obd_rs.obd_client import EXTENDED_PIDS, HIGH_PIDS, LOW_PIDS, MEDIUM_PIDS, PID
 from obd_rs.scheduler import PollScheduler
 
 
@@ -24,7 +24,12 @@ class _StubProvider:
         return self._responses.get(pid.name, 42.0)
 
     def pid_groups(self) -> dict[str, list[PID]]:
-        return {"high": HIGH_PIDS, "medium": MEDIUM_PIDS, "low": LOW_PIDS}
+        return {
+            "high": HIGH_PIDS,
+            "medium": MEDIUM_PIDS,
+            "low": LOW_PIDS,
+            "extended": EXTENDED_PIDS,
+        }
 
     def connection_status(self) -> ConnectionStatus:
         return ConnectionStatus()
@@ -35,14 +40,8 @@ class _StubProvider:
     async def read_pending_dtcs(self) -> list[str]:
         return []
 
-    async def read_extended_telemetry(self) -> dict[str, float | None]:
-        return {}
-
     def extended_support(self) -> dict[str, bool]:
         return {}
-
-    def extended_field_names(self) -> list[str]:
-        return []
 
 
 @pytest.mark.asyncio
@@ -144,3 +143,36 @@ async def test_cadence_switch_allows_immediate_repoll() -> None:
     # Tick at t=101 — should re-poll since interval elapsed for new cadence.
     await scheduler.tick(101.0)
     assert "rpm" in provider.queried
+
+
+@pytest.mark.asyncio
+async def test_extended_group_is_polled_by_scheduler() -> None:
+    provider = _StubProvider({"maf_gps": 15.0, "map_kpa": 55.0, "oil_temp": 96.0})
+    state = TelemetryState()
+    policy = LoggingPolicy(mode=LogMode.CRUISE)
+    scheduler = PollScheduler(provider, state, policy)
+
+    await scheduler.tick(100.0)
+
+    assert state.maf_gps.value == 15.0
+    assert state.map_kpa.value == 55.0
+    assert state.oil_temp.value == 96.0
+    assert not state.maf_gps.stale
+
+
+@pytest.mark.asyncio
+async def test_high_priority_pids_are_staggered_after_initial_fill() -> None:
+    provider = _StubProvider({pid.name: float(i) for i, pid in enumerate(HIGH_PIDS + MEDIUM_PIDS + LOW_PIDS + EXTENDED_PIDS, start=1)})
+    state = TelemetryState()
+    policy = LoggingPolicy(mode=LogMode.REALTIME)
+    scheduler = PollScheduler(provider, state, policy)
+
+    # Use a deterministic cadence so stagger timing is predictable.
+    policy.cadence = lambda: PollCadence(high_hz=4.0, medium_hz=1.0, low_hz=1.0, extended_hz=1.0)  # type: ignore[method-assign]
+
+    await scheduler.tick(100.0)
+    provider.queried.clear()
+
+    await scheduler.tick(100.09)
+
+    assert provider.queried == ["rpm"]

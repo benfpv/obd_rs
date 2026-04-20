@@ -44,25 +44,18 @@ class LiveTelemetryProvider(TelemetryProvider):
         return await self.client.read_pending_dtcs()
 
     def pid_groups(self) -> dict[str, list[PID]]:
-        return self.client.pid_groups()
+        groups = dict(self.client.pid_groups())
+        groups["extended"] = [
+            pid for pid in EXTENDED_PIDS
+            if self._extended_support.get(pid.name, False)
+        ]
+        return groups
 
     def connection_status(self) -> ConnectionStatus:
         return self.adapter.status
 
-    async def read_extended_telemetry(self) -> dict[str, Optional[float]]:
-        values: dict[str, Optional[float]] = {}
-        for pid in EXTENDED_PIDS:
-            if self._extended_support.get(pid.name, False):
-                values[pid.name] = await self.client.try_query_pid(pid)
-            else:
-                values[pid.name] = None
-        return values
-
     def extended_support(self) -> dict[str, bool]:
         return dict(self._extended_support)
-
-    def extended_field_names(self) -> list[str]:
-        return [pid.name for pid in EXTENDED_PIDS]
 
     def comm_stats(self) -> CommStats:
         return self.adapter.comm_stats

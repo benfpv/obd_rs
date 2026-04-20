@@ -54,6 +54,12 @@ class SimulatedTelemetryProvider(TelemetryProvider):
             value = 6.0 + 24.0 * (0.5 + 0.5 * math.sin(t * 0.7))
         elif name == "module_voltage":
             value = 13.0 + 1.3 * (0.5 + 0.5 * math.sin(t * 0.2))
+        elif name == "maf_gps":
+            value = 7.0 + 68.0 * (0.5 + 0.5 * math.sin(t * 0.72))
+        elif name == "map_kpa":
+            value = 28.0 + 72.0 * (0.5 + 0.5 * math.sin(t * 0.55))
+        elif name == "oil_temp":
+            value = 84.0 + 40.0 * (0.5 + 0.5 * math.sin(t * 0.08))
         else:
             value = 0.0
         self._stats.record_rx(f"{value:.3f}")
@@ -66,18 +72,15 @@ class SimulatedTelemetryProvider(TelemetryProvider):
         return []
 
     def pid_groups(self) -> dict[str, list[PID]]:
-        return {"high": HIGH_PIDS, "medium": MEDIUM_PIDS, "low": LOW_PIDS}
+        return {
+            "high": HIGH_PIDS,
+            "medium": MEDIUM_PIDS,
+            "low": LOW_PIDS,
+            "extended": EXTENDED_PIDS,
+        }
 
     def connection_status(self) -> ConnectionStatus:
         return self._status
-
-    async def read_extended_telemetry(self) -> dict[str, Optional[float]]:
-        t = time.time()
-        return {
-            "maf_gps": 7.0 + 68.0 * (0.5 + 0.5 * math.sin(t * 0.72)),
-            "map_kpa": 28.0 + 72.0 * (0.5 + 0.5 * math.sin(t * 0.55)),
-            "oil_temp": 84.0 + 40.0 * (0.5 + 0.5 * math.sin(t * 0.08)),
-        }
 
     def extended_support(self) -> dict[str, bool]:
         return {
@@ -85,9 +88,6 @@ class SimulatedTelemetryProvider(TelemetryProvider):
             "map_kpa": True,
             "oil_temp": True,
         }
-
-    def extended_field_names(self) -> list[str]:
-        return [pid.name for pid in EXTENDED_PIDS]
 
     def comm_stats(self) -> CommStats:
         return self._stats

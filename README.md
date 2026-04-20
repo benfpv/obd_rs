@@ -105,9 +105,9 @@ BLE+, with partial compatibility for other BLE ELM327-compatible adapters**.
 
 - **Provider-based architecture** — hard separation between simulated, live,
   and replay data sources behind a common `TelemetryProvider` ABC.
-- **Tiered polling scheduler** — deadline-based cadence with REALTIME and
-  CRUISE modes; high-priority PIDs (RPM, speed, throttle) polled faster than
-  diagnostics.
+- **Tiered polling scheduler** — per-PID staggered cadence with REALTIME and
+  CRUISE modes; high-priority PIDs (RPM, speed, throttle) are refreshed ahead
+  of diagnostics and extended channels.
 - **Alert engine** — separate channels for Issues/Defects and Possible Issues,
   with stale-signal guards to avoid false positives.
 - **OpenCV dashboard** — six panel sections (Diagnostics, Racing Inputs,
@@ -128,7 +128,7 @@ BLE+, with partial compatibility for other BLE ELM327-compatible adapters**.
 ### Provider contract
 
 All data sources implement the `TelemetryProvider` ABC (`obd_rs/providers/base.py`),
-which defines 11 abstract methods covering lifecycle, querying, and diagnostics.
+which defines the shared lifecycle, querying, and diagnostics contract.
 
 Replay providers additionally implement the `PlaybackCapable` mixin for
 playback controls (pause, stop, seek, skip-to-speed). The app uses capability
@@ -148,7 +148,7 @@ obd_rs/
 ├── config.py                    Environment-driven configuration, enums
 ├── app.py                       Main orchestrator (decomposed async loop)
 ├── startup.py                   Interactive mode / device / file chooser
-├── scheduler.py                 Deadline-based cadence polling
+├── scheduler.py                 Per-PID staggered cadence polling
 ├── alerts.py                    Heuristic alert engine
 ├── data_processing.py           Derived telemetry calculations
 ├── models.py                    TelemetryState, Signal, AlertEvent
@@ -174,7 +174,7 @@ obd_rs/
     ├── _alerts_panel.py         Scrolling alert list
     ├── _system.py               Connection state, cadence bars, comm stats
     └── _fuel_trims.py           STFT/LTFT, extended metrics, sparklines
-tests/                           pytest test suite (137 tests)
+tests/                           pytest test suite (140 tests)
 ```
 
 ---
@@ -213,9 +213,11 @@ defaults. See `obd_rs/config.py` for the full list.
 | `OBD_RS_WINDOW_W` / `_H`       | 1200 × 760    | Dashboard window size                 |
 | `OBD_RS_FPS`                    | 20            | Target render frame rate              |
 | `OBD_RS_NAME_HINTS`             | `VEEPEAK,OBD,OBDII,ELM327` | BLE device name filters |
+| `OBD_RS_POLL_PROFILE`           | `balanced`    | Poll profile: `core`, `balanced`, `full` |
 | `OBD_RS_MINIMAL_WRITES`         | `1`           | Use minimal ELM327 init sequence      |
 | `OBD_RS_BLE_SCAN_TIMEOUT_S`     | 5.0           | BLE discovery timeout                 |
 | `OBD_RS_MAX_RECONNECT_ATTEMPTS` | 3             | Auto-reconnect retry budget           |
+| `OBD_RS_DTC_READ_INTERVAL_S`    | 5.0           | Seconds between active/pending DTC reads |
 | `OBD_RS_SIGNAL_STALE_AGE_S`     | 2.0           | Seconds before a signal is marked stale |
 | `OBD_RS_RPM_REDLINE`            | 8000          | Rev-light redline threshold           |
 | `OBD_RS_LOG_DIR`                | `logs`        | CSV telemetry output directory        |
@@ -229,7 +231,7 @@ defaults. See `obd_rs/config.py` for the full list.
 python -m pytest tests/ -v
 ```
 
-137 tests covering providers, scheduler, alerts, physics, BLE safety, buffer,
+140 tests covering providers, scheduler, alerts, physics, BLE safety, buffer,
 data logger, replay controls, UI helpers, and app-level integration.
 
 ---

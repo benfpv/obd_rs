@@ -49,15 +49,15 @@ class _DiagnosticsPanel:
 
     def __init__(self, buf_size: int) -> None:
         self._hist: dict[str, deque] = {key: deque(maxlen=buf_size) for key, *_ in self._CHARTS}
-        # (value, is_absent) per card attribute; refreshed every frame
-        self._snaps: dict[str, tuple[Optional[float], bool]] = {}
+        # (value, stale, supported) per card attribute; refreshed every frame.
+        self._snaps: dict[str, tuple[Optional[float], bool, bool]] = {}
 
     def update(self, t: TelemetryState, _derived: Optional[DerivedTelemetry]) -> None:
         for key, attr, *_ in self._CHARTS:
             sig: Signal = getattr(t, attr)
             self._hist[key].append(_series_value(sig))
         self._snaps = {
-            attr: (sig.value, sig.stale or not sig.supported)
+            attr: (sig.value, sig.stale, sig.supported)
             for (_, attr, *_) in self._CARDS
             for sig in (getattr(t, attr),)
         }
@@ -70,9 +70,9 @@ class _DiagnosticsPanel:
         card_w = (w - 24) // 4
         for i, (label, attr, unit, caution, critical, low_is_caution) in enumerate(self._CARDS):
             cx = x + i * (card_w + 8)
-            value, absent = self._snaps.get(attr, (None, True))
+            value, stale, supported = self._snaps.get(attr, (None, True, False))
             self._draw_card(frame, (cx, y, card_w, cards_h),
-                            label, value, absent, unit, caution, critical, theme, low_is_caution=low_is_caution)
+                            label, value, stale, supported, unit, caution, critical, theme, low_is_caution=low_is_caution)
 
         # ── Trend charts ───────────────────────────────────────────────────
         charts_y = y + cards_h + 8
@@ -90,7 +90,8 @@ class _DiagnosticsPanel:
         rect: tuple,
         label: str,
         value: Optional[float],
-        absent: bool,
+        stale: bool,
+        supported: bool,
         unit: str,
         caution: float,
         critical: float,
@@ -98,43 +99,110 @@ class _DiagnosticsPanel:
         low_is_caution: bool = False,
     ) -> None:
         x, y, w, h = rect
-        state = _card_state(value, absent, caution, critical, low_is_caution=low_is_caution)
-        if state == "absent":
+        pad = 8
+        inner_w = max(8, w - (pad * 2))
+
+        has_value = value is not None
+        state = _card_state(value, not has_value, caution, critical, low_is_caution=low_is_caution)
+        if not supported:
             col  = (138, 138, 138)
             glow = (46, 48, 52)
+            badge = "N/A"
+            badge_col = (132, 136, 146)
+        elif stale:
+            # Keep last-known value visible but clearly mark data as stale.
+            col = (154, 168, 184)
+            glow = (62, 68, 78)
+            badge = "STALE"
+            badge_col = (168, 178, 190)
+        elif not has_value:
+            col = (138, 138, 138)
+            glow = (46, 48, 52)
+            badge = "WAIT"
+            badge_col = (132, 136, 146)
         elif state == "critical":
             col  = (198, 170, 250)
             glow = (82, 66, 92)
+            badge = "LIVE"
+            badge_col = (154, 196, 168)
         elif state == "caution":
             col  = (196, 188, 234)
             glow = (78, 74, 90)
+            badge = "LIVE"
+            badge_col = (154, 196, 168)
         else:
             col  = (172, 204, 188)
             glow = (70, 88, 80)
+            badge = "LIVE"
+            badge_col = (154, 196, 168)
 
         cv2.rectangle(frame, (x, y), (x + w, y + h), theme["panel_border"], 1)
         cv2.rectangle(frame, (x + 1, y + 1), (x + w - 1, y + h - 1), glow, -1)
 
-        label_max_w = max(8, w - 16)
-        label_scale = _fit_scale(label, label_max_w, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1, 0.28)
-        label_text = _fit_text(label, label_max_w, cv2.FONT_HERSHEY_SIMPLEX, label_scale, 1)
-        (_, label_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, label_scale, 1)
-        cv2.putText(frame, label_text, (x + 8, y + max(18, 8 + label_h)),
-                    cv2.FONT_HERSHEY_SIMPLEX, label_scale, theme["text_primary"], 1, cv2.LINE_AA)
-
-        if absent or value is None:
-            value_scale = _fit_scale("--", max(8, w - 16), cv2.FONT_HERSHEY_DUPLEX, 0.86, 1, 0.56)
-            cv2.putText(frame, "--", (x + 8, y + 52),
-                        cv2.FONT_HERSHEY_DUPLEX, value_scale, col, 1, cv2.LINE_AA)
+        if not supported:
+            value_text = "N/A"
+        elif value is None:
+            value_text = "--"
         else:
-            val_str = f"{value:.1f}"
-            unit_scale = _fit_scale(unit, max(8, w // 5), cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1, 0.28)
-            (unit_w, _), _ = cv2.getTextSize(unit, cv2.FONT_HERSHEY_SIMPLEX, unit_scale, 1)
-            value_max_w = max(8, w - 19 - unit_w)
-            value_scale = _fit_scale(val_str, value_max_w, cv2.FONT_HERSHEY_DUPLEX, 0.86, 1, 0.48)
-            val_text = _fit_text(val_str, value_max_w, cv2.FONT_HERSHEY_DUPLEX, value_scale, 1)
-            (val_w, _), _ = cv2.getTextSize(val_text, cv2.FONT_HERSHEY_DUPLEX, value_scale, 1)
-            cv2.putText(frame, val_text, (x + 8, y + 52),
-                        cv2.FONT_HERSHEY_DUPLEX, value_scale, col, 1, cv2.LINE_AA)
-            cv2.putText(frame, unit, (x + 8 + val_w + 3, y + 47),
-                        cv2.FONT_HERSHEY_SIMPLEX, unit_scale, theme["text_dim"], 1, cv2.LINE_AA)
+            value_text = f"{value:.1f} {unit}".strip()
+
+        # Vertical card stack: centered title -> centered freshness -> centered value.
+        title_scale = _fit_scale(label, inner_w, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1, 0.28)
+        title_text = _fit_text(label, inner_w, cv2.FONT_HERSHEY_SIMPLEX, title_scale, 1)
+        (title_w, title_h), _ = cv2.getTextSize(title_text, cv2.FONT_HERSHEY_SIMPLEX, title_scale, 1)
+
+        badge_scale = _fit_scale(badge, inner_w, cv2.FONT_HERSHEY_PLAIN, 0.90, 1, 0.64)
+        badge_text = _fit_text(badge, inner_w, cv2.FONT_HERSHEY_PLAIN, badge_scale, 1)
+        (badge_w, badge_h), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_PLAIN, badge_scale, 1)
+
+        value_scale = _fit_scale(value_text, inner_w, cv2.FONT_HERSHEY_DUPLEX, 0.82, 1, 0.46)
+        value_text = _fit_text(value_text, inner_w, cv2.FONT_HERSHEY_DUPLEX, value_scale, 1)
+        (value_w, value_h), _ = cv2.getTextSize(value_text, cv2.FONT_HERSHEY_DUPLEX, value_scale, 1)
+
+        min_top = y + 10
+        min_bottom = y + h - 8
+        line_gap = max(4, int(h * 0.06))
+        block_h = title_h + badge_h + value_h + (line_gap * 2)
+
+        if block_h > max(1, min_bottom - min_top):
+            # Keep the stack readable on unusually short cards.
+            value_scale = _fit_scale(value_text, inner_w, cv2.FONT_HERSHEY_DUPLEX, 0.70, 1, 0.40)
+            value_text = _fit_text(value_text, inner_w, cv2.FONT_HERSHEY_DUPLEX, value_scale, 1)
+            (value_w, value_h), _ = cv2.getTextSize(value_text, cv2.FONT_HERSHEY_DUPLEX, value_scale, 1)
+            block_h = title_h + badge_h + value_h + (line_gap * 2)
+
+        top = max(min_top, y + (h - block_h) // 2)
+        title_y = top + title_h
+        badge_y = title_y + line_gap + badge_h
+        value_y = min(min_bottom, badge_y + line_gap + value_h)
+
+        cv2.putText(
+            frame,
+            title_text,
+            (x + (w - title_w) // 2, title_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            title_scale,
+            theme["text_primary"],
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            frame,
+            badge_text,
+            (x + (w - badge_w) // 2, badge_y),
+            cv2.FONT_HERSHEY_PLAIN,
+            badge_scale,
+            badge_col,
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            frame,
+            value_text,
+            (x + (w - value_w) // 2, value_y),
+            cv2.FONT_HERSHEY_DUPLEX,
+            value_scale,
+            col,
+            1,
+            cv2.LINE_AA,
+        )

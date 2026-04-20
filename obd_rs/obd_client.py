@@ -124,7 +124,12 @@ class ObdClient:
         return _parse_dtc_response(response, "07")
 
     def pid_groups(self) -> dict[str, list[PID]]:
-        return {"high": HIGH_PIDS, "medium": MEDIUM_PIDS, "low": LOW_PIDS}
+        return {
+            "high": HIGH_PIDS,
+            "medium": MEDIUM_PIDS,
+            "low": LOW_PIDS,
+            "extended": EXTENDED_PIDS,
+        }
 
     def extended_pid_list(self) -> list[PID]:
         return list(EXTENDED_PIDS)

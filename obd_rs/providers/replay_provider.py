@@ -145,21 +145,19 @@ class ReplayTelemetryProvider(TelemetryProvider, PlaybackCapable):
         return list(self._current_frame().dtcs_pending)
 
     def pid_groups(self) -> dict[str, list[PID]]:
-        return {"high": HIGH_PIDS, "medium": MEDIUM_PIDS, "low": LOW_PIDS}
+        return {
+            "high": HIGH_PIDS,
+            "medium": MEDIUM_PIDS,
+            "low": LOW_PIDS,
+            "extended": EXTENDED_PIDS,
+        }
 
     def connection_status(self) -> ConnectionStatus:
         return self._status
 
-    async def read_extended_telemetry(self) -> dict[str, Optional[float]]:
-        frame = self._current_frame()
-        return {pid.name: frame.values.get(pid.name) for pid in EXTENDED_PIDS}
-
     def extended_support(self) -> dict[str, bool]:
         names = [pid.name for pid in EXTENDED_PIDS]
         return {name: any(f.values.get(name) is not None for f in self._frames) for name in names}
-
-    def extended_field_names(self) -> list[str]:
-        return [pid.name for pid in EXTENDED_PIDS]
 
     def comm_stats(self) -> CommStats:
         return self._stats

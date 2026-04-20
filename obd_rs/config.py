@@ -17,11 +17,18 @@ class DataSource(str, Enum):
         return self.value
 
 
+class PollProfile(str, Enum):
+    CORE = "core"
+    BALANCED = "balanced"
+    FULL = "full"
+
+
 @dataclass(frozen=True)
 class PollCadence:
     high_hz: float
     medium_hz: float
     low_hz: float
+    extended_hz: float
 
 
 def _env_true(name: str, default: str = "0") -> bool:
@@ -77,23 +84,38 @@ RECONNECT_DELAY_S = _env_float("OBD_RS_RECONNECT_DELAY_S", 2.0)
 # Poll cadence
 # ---------------------------------------------------------------------------
 
-_REALTIME_NORMAL = PollCadence(high_hz=10.0, medium_hz=4.0, low_hz=1.0)
-_CRUISE_NORMAL = PollCadence(high_hz=2.0, medium_hz=1.0, low_hz=0.2)
-_REALTIME_MINIMAL = PollCadence(high_hz=4.0, medium_hz=1.0, low_hz=0.2)
-_CRUISE_MINIMAL = PollCadence(high_hz=1.0, medium_hz=0.5, low_hz=0.1)
+# BLE ELM327 readers have limited command throughput, so cadence values are
+# profile-based. "balanced" is the default for smooth core gauges while still
+# refreshing diagnostics and extended telemetry.
+_POLL_PROFILE_RAW = os.environ.get("OBD_RS_POLL_PROFILE", PollProfile.BALANCED.value).strip().lower()
+try:
+    POLL_PROFILE = PollProfile(_POLL_PROFILE_RAW)
+except ValueError:
+    POLL_PROFILE = PollProfile.BALANCED
 
-if MINIMAL_WRITES:
-    LOG_MODE_CADENCE = {LogMode.REALTIME: _REALTIME_MINIMAL, LogMode.CRUISE: _CRUISE_MINIMAL}
-else:
-    LOG_MODE_CADENCE = {LogMode.REALTIME: _REALTIME_NORMAL, LogMode.CRUISE: _CRUISE_NORMAL}
+_PROFILE_CADENCE: dict[PollProfile, dict[LogMode, PollCadence]] = {
+    PollProfile.CORE: {
+        LogMode.REALTIME: PollCadence(high_hz=3.0, medium_hz=0.25, low_hz=0.02, extended_hz=0.01),
+        LogMode.CRUISE: PollCadence(high_hz=1.0, medium_hz=0.10, low_hz=0.01, extended_hz=0.01),
+    },
+    PollProfile.BALANCED: {
+        LogMode.REALTIME: PollCadence(high_hz=2.8, medium_hz=0.50, low_hz=0.10, extended_hz=0.08),
+        LogMode.CRUISE: PollCadence(high_hz=1.0, medium_hz=0.20, low_hz=0.03, extended_hz=0.02),
+    },
+    PollProfile.FULL: {
+        LogMode.REALTIME: PollCadence(high_hz=3.0, medium_hz=0.60, low_hz=0.12, extended_hz=0.08),
+        LogMode.CRUISE: PollCadence(high_hz=1.2, medium_hz=0.30, low_hz=0.05, extended_hz=0.03),
+    },
+}
+
+LOG_MODE_CADENCE = _PROFILE_CADENCE[POLL_PROFILE]
 
 # ---------------------------------------------------------------------------
 # App loop timing
 # ---------------------------------------------------------------------------
 
 RECONNECT_INTERVAL_S = _env_float("OBD_RS_RECONNECT_INTERVAL_S", 10.0)
-DTC_READ_INTERVAL_S = _env_float("OBD_RS_DTC_READ_INTERVAL_S", 2.0)
-EXTENDED_READ_INTERVAL_S = _env_float("OBD_RS_EXTENDED_READ_INTERVAL_S", 0.25)
+DTC_READ_INTERVAL_S = _env_float("OBD_RS_DTC_READ_INTERVAL_S", 5.0)
 SIGNAL_STALE_AGE_S = _env_float("OBD_RS_SIGNAL_STALE_AGE_S", 2.0)
 
 # ---------------------------------------------------------------------------

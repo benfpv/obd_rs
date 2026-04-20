@@ -8,6 +8,7 @@ from obd_rs.ble_adapter import ConnectionState, ConnectionStatus
 from obd_rs.config import DataSource, LogMode
 from obd_rs.logging_policy import LoggingPolicy
 from obd_rs.models import Signal
+from obd_rs.ui._diagnostics import _DiagnosticsPanel
 from obd_rs.ui import DashboardUI, _SystemPanel, _card_state, _fit_scale, _series_value
 
 
@@ -114,3 +115,191 @@ def test_system_panel_renders_data_source_line(monkeypatch) -> None:
 
     assert "Source" in texts
     assert "replay" in texts
+
+
+def test_diagnostics_card_shows_stale_badge_with_last_known_value(monkeypatch) -> None:
+    texts: list[str] = []
+
+    def _capture_text(_frame, text, *_args, **_kwargs):
+        texts.append(text)
+        return _frame
+
+    monkeypatch.setattr(cv2, "putText", _capture_text)
+    frame = np.zeros((160, 240, 3), dtype=np.uint8)
+    theme = {
+        "panel_border": (68, 66, 64),
+        "text_primary": (232, 232, 232),
+        "text_dim": (174, 174, 174),
+    }
+
+    _DiagnosticsPanel._draw_card(
+        frame=frame,
+        rect=(8, 8, 120, 72),
+        label="COOLANT",
+        value=97.5,
+        stale=True,
+        supported=True,
+        unit="C",
+        caution=95.0,
+        critical=112.0,
+        theme=theme,
+        low_is_caution=False,
+    )
+
+    assert "STALE" in texts
+    assert any("97.5" in t for t in texts)
+
+
+def test_diagnostics_card_shows_na_for_unsupported_signal(monkeypatch) -> None:
+    texts: list[str] = []
+
+    def _capture_text(_frame, text, *_args, **_kwargs):
+        texts.append(text)
+        return _frame
+
+    monkeypatch.setattr(cv2, "putText", _capture_text)
+    frame = np.zeros((160, 240, 3), dtype=np.uint8)
+    theme = {
+        "panel_border": (68, 66, 64),
+        "text_primary": (232, 232, 232),
+        "text_dim": (174, 174, 174),
+    }
+
+    _DiagnosticsPanel._draw_card(
+        frame=frame,
+        rect=(8, 8, 120, 72),
+        label="OIL TEMP",
+        value=None,
+        stale=True,
+        supported=False,
+        unit="C",
+        caution=110.0,
+        critical=125.0,
+        theme=theme,
+        low_is_caution=False,
+    )
+
+    assert "N/A" in texts
+
+
+def test_diagnostics_card_shows_live_badge_for_fresh_value(monkeypatch) -> None:
+    texts: list[str] = []
+
+    def _capture_text(_frame, text, *_args, **_kwargs):
+        texts.append(text)
+        return _frame
+
+    monkeypatch.setattr(cv2, "putText", _capture_text)
+    frame = np.zeros((160, 240, 3), dtype=np.uint8)
+    theme = {
+        "panel_border": (68, 66, 64),
+        "text_primary": (232, 232, 232),
+        "text_dim": (174, 174, 174),
+    }
+
+    _DiagnosticsPanel._draw_card(
+        frame=frame,
+        rect=(8, 8, 120, 72),
+        label="COOLANT",
+        value=85.0,
+        stale=False,
+        supported=True,
+        unit="C",
+        caution=95.0,
+        critical=112.0,
+        theme=theme,
+        low_is_caution=False,
+    )
+
+    assert "LIVE" in texts
+    assert "STALE" not in texts
+
+
+def test_diagnostics_card_layout_avoids_header_and_value_overlap(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    def _capture_text(_frame, text, org, font_face, font_scale, color, thickness, line_type):
+        calls.append(
+            {
+                "text": text,
+                "org": org,
+                "font": font_face,
+                "scale": font_scale,
+                "thickness": thickness,
+            }
+        )
+        return _frame
+
+    monkeypatch.setattr(cv2, "putText", _capture_text)
+    frame = np.zeros((160, 260, 3), dtype=np.uint8)
+    theme = {
+        "panel_border": (68, 66, 64),
+        "text_primary": (232, 232, 232),
+        "text_dim": (174, 174, 174),
+    }
+
+    _DiagnosticsPanel._draw_card(
+        frame=frame,
+        rect=(8, 8, 132, 76),
+        label="COOLANT",
+        value=97.5,
+        stale=True,
+        supported=True,
+        unit="C",
+        caution=95.0,
+        critical=112.0,
+        theme=theme,
+        low_is_caution=False,
+    )
+
+    label_call = next(c for c in calls if c["text"] == "COOLANT")
+    badge_call = next(c for c in calls if c["text"] == "STALE")
+    value_call = next(c for c in calls if c["text"].startswith("97.5"))
+
+    (label_w, label_h), _ = cv2.getTextSize(
+        label_call["text"],
+        label_call["font"],
+        label_call["scale"],
+        label_call["thickness"],
+    )
+    (badge_w, badge_h), _ = cv2.getTextSize(
+        badge_call["text"],
+        badge_call["font"],
+        badge_call["scale"],
+        badge_call["thickness"],
+    )
+    (value_w, value_h), _ = cv2.getTextSize(
+        value_call["text"],
+        value_call["font"],
+        value_call["scale"],
+        value_call["thickness"],
+    )
+
+    label_left = label_call["org"][0]
+    badge_left = badge_call["org"][0]
+    value_left = value_call["org"][0]
+
+    # Horizontal placement: each row should be centered to avoid clipping.
+    assert abs((label_left + (label_w / 2)) - (8 + (132 / 2))) <= 4
+    assert abs((badge_left + (badge_w / 2)) - (8 + (132 / 2))) <= 4
+    assert abs((value_left + (value_w / 2)) - (8 + (132 / 2))) <= 4
+
+    label_top = label_call["org"][1] - label_h
+    badge_top = badge_call["org"][1] - badge_h
+    value_top = value_call["org"][1] - value_h
+
+    # Vertical stack ordering with clear non-overlapping separation.
+    assert badge_top >= label_call["org"][1] + 3
+    assert value_top >= badge_call["org"][1] + 3
+
+    # Ensure all text remains inside the card bounds.
+    assert label_left >= 8
+    assert badge_left >= 8
+    assert value_left >= 8
+    assert label_left + label_w <= 8 + 132
+    assert badge_left + badge_w <= 8 + 132
+    assert value_left + value_w <= 8 + 132
+    assert label_top >= 8
+    assert badge_top >= 8
+    assert value_top >= 8
+    assert value_call["org"][1] <= 8 + 76
