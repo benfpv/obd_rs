@@ -22,15 +22,36 @@ Module layout:
     _system.py       – Connection state, cadence bars, comm stats
     _fuel_trims.py   – STFT/LTFT, extended metrics, sparklines
     _dashboard.py    – DashboardUI coordinator (drives update→draw)
+    _contracts.py    – Typed theme keys, panel protocol, validators
+    _text.py         – TextStyle dataclass, STYLES registry, draw_text helper
 """
 
 # Re-export public API for backward-compatible ``from obd_rs.ui import …``
+from ._contracts import (
+    Rect,
+    THEME_KEYS,
+    PanelContract,
+    ThemeColor,
+    assert_panel_theme_compatible,
+    validate_theme,
+)
 from ._dashboard import DashboardUI
 from ._helpers import _card_state, _fit_scale, _series_value
 from ._system import _SystemPanel
+from ._text import STYLES, TextStyle, draw_text, fit_text_to
 
 __all__ = [
     "DashboardUI",
+    "PanelContract",
+    "Rect",
+    "STYLES",
+    "TextStyle",
+    "THEME_KEYS",
+    "ThemeColor",
+    "assert_panel_theme_compatible",
+    "draw_text",
+    "fit_text_to",
+    "validate_theme",
     "_SystemPanel",
     "_card_state",
     "_fit_scale",

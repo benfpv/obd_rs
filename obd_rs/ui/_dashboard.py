@@ -13,6 +13,7 @@ from ..logging_policy import LoggingPolicy
 from ..models import AlertEvent, Severity, TelemetryState
 from ..windowing import center_window
 from ._alerts_panel import _AlertsPanel
+from ._contracts import THEME_KEYS, assert_panel_theme_compatible, validate_theme
 from ._diagnostics import _DiagnosticsPanel
 from ._engine import _EnginePowerPanel
 from ._fuel_trims import _FuelTrimsPanel
@@ -29,9 +30,10 @@ class DashboardUI:
         it here, and wire it into draw().  Nothing else needs to change.
         """
         self.win_name = WINDOW_NAME
+        self._w, self._h = WINDOW_SIZE
         cv2.namedWindow(self.win_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(self.win_name, WINDOW_SIZE[0], WINDOW_SIZE[1])
-        center_window(self.win_name, WINDOW_SIZE[0], WINDOW_SIZE[1])
+        cv2.resizeWindow(self.win_name, self._w, self._h)
+        center_window(self.win_name, self._w, self._h)
 
         self._theme = {
             "bg_top":          (44, 37, 30),
@@ -59,6 +61,20 @@ class DashboardUI:
         self._alerts_panel  = _AlertsPanel()
         self._system_panel  = _SystemPanel()
         self._fuel_trims    = _FuelTrimsPanel(HISTORY_BUFFER_SIZE)
+        self._validate_theme_contracts()
+
+    def _validate_theme_contracts(self) -> None:
+        """Fail fast if dashboard theme does not satisfy panel contracts."""
+        validate_theme(self._theme, THEME_KEYS)
+        for panel_type in (
+            type(self._diagnostics),
+            type(self._racing),
+            type(self._engine),
+            type(self._alerts_panel),
+            type(self._system_panel),
+            type(self._fuel_trims),
+        ):
+            assert_panel_theme_compatible(self._theme, panel_type)
 
     def draw(
         self,
@@ -74,7 +90,7 @@ class DashboardUI:
         on_key: Optional[Callable[[int], None]] = None,
         logging_enabled: bool = True,
     ) -> bool:
-        w, h = WINDOW_SIZE
+        w, h = self._w, self._h
         frame = np.zeros((h, w, 3), dtype=np.uint8)
         self._paint_background(frame)
         panels = self._layout(w, h)

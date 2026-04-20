@@ -20,6 +20,10 @@ class _SystemPanel:
         self._comm_stats: Optional[CommStats] = None
         self._data_source: Optional[DataSource] = None
 
+    @classmethod
+    def required_theme_keys(cls) -> frozenset[str]:
+        return frozenset({"panel_border", "text_primary", "text_dim", "system"})
+
     def update(self, conn: ConnectionStatus, policy: LoggingPolicy,
                comm_stats: Optional[CommStats], data_source: Optional[DataSource] = None) -> None:
         self._conn       = conn

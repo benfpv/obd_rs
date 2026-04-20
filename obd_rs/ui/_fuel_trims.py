@@ -26,6 +26,10 @@ class _FuelTrimsPanel:
         self._stft_snap: tuple[Optional[float], bool] = (None, True)
         self._ltft_snap: tuple[Optional[float], bool] = (None, True)
 
+    @classmethod
+    def required_theme_keys(cls) -> frozenset[str]:
+        return frozenset({"panel_border", "text_primary", "text_dim"})
+
     def update(self, t: TelemetryState, _derived: Optional[DerivedTelemetry]) -> None:
         self._stft_snap = (t.stft_b1.value, t.stft_b1.stale or not t.stft_b1.supported)
         self._ltft_snap = (t.ltft_b1.value, t.ltft_b1.stale or not t.ltft_b1.supported)

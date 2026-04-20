@@ -52,6 +52,10 @@ class _DiagnosticsPanel:
         # (value, stale, supported) per card attribute; refreshed every frame.
         self._snaps: dict[str, tuple[Optional[float], bool, bool]] = {}
 
+    @classmethod
+    def required_theme_keys(cls) -> frozenset[str]:
+        return frozenset({"panel_border", "text_primary"})
+
     def update(self, t: TelemetryState, _derived: Optional[DerivedTelemetry]) -> None:
         for key, attr, *_ in self._CHARTS:
             sig: Signal = getattr(t, attr)

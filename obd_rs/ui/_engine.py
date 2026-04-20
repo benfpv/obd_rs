@@ -22,6 +22,10 @@ class _EnginePowerPanel:
         self._rpm = self._load = self._spark = self._maf = self._map_kpa = 0.0
         self._power = self._torque = 0.0
 
+    @classmethod
+    def required_theme_keys(cls) -> frozenset[str]:
+        return frozenset({"panel_border", "text_primary", "text_dim"})
+
     def update(self, t: TelemetryState, derived: Optional[DerivedTelemetry]) -> None:
         self._rpm     = _v(t.rpm.value)
         self._load    = _v(t.engine_load.value)

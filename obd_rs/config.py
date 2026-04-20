@@ -48,7 +48,16 @@ def _env_int(name: str, default: int) -> int:
 # ---------------------------------------------------------------------------
 
 WINDOW_NAME = os.environ.get("OBD_RS_WINDOW_NAME", "obd_rs")
-WINDOW_SIZE = (_env_int("OBD_RS_WINDOW_W", 1200), _env_int("OBD_RS_WINDOW_H", 760))
+WINDOW_MIN_SIZE = (800, 600)
+
+
+def _clamp_window_size(width: int, height: int) -> tuple[int, int]:
+    """Clamp configured window size to a minimum usable dashboard footprint."""
+    min_w, min_h = WINDOW_MIN_SIZE
+    return (max(min_w, width), max(min_h, height))
+
+
+WINDOW_SIZE = _clamp_window_size(_env_int("OBD_RS_WINDOW_W", 1200), _env_int("OBD_RS_WINDOW_H", 760))
 FPS = _env_int("OBD_RS_FPS", 20)
 
 # ---------------------------------------------------------------------------

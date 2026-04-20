@@ -23,6 +23,10 @@ class _RacingInputsPanel:
         self._speed = 0.0
         self._throttle = 0.0
 
+    @classmethod
+    def required_theme_keys(cls) -> frozenset[str]:
+        return frozenset({"panel_border"})
+
     def update(self, t: TelemetryState, derived: Optional[DerivedTelemetry]) -> None:
         self._rpm      = float(np.clip(_v(t.rpm.value),      0.0, 9000.0))
         self._speed    = float(np.clip(_v(t.speed.value),    0.0, 320.0))

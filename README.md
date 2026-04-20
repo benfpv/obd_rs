@@ -166,6 +166,8 @@ obd_rs/
 │   └── replay_provider.py       Recorded CSV playback
 └── ui/
     ├── __init__.py              Package re-exports
+    ├── _contracts.py            Typed theme keys, panel protocol, validators
+    ├── _text.py                 TextStyle dataclass, STYLES registry, draw_text
     ├── _helpers.py              Shared rendering primitives
     ├── _dashboard.py            DashboardUI coordinator
     ├── _diagnostics.py          Coolant / Oil / Intake / Voltage panel
@@ -174,8 +176,43 @@ obd_rs/
     ├── _alerts_panel.py         Scrolling alert list
     ├── _system.py               Connection state, cadence bars, comm stats
     └── _fuel_trims.py           STFT/LTFT, extended metrics, sparklines
-tests/                           pytest test suite (140 tests)
+tests/                           pytest test suite (179 tests)
 ```
+
+### UI panel contract
+
+Every dashboard panel satisfies the `PanelContract` protocol
+(`obd_rs/ui/_contracts.py`):
+
+```python
+class PanelContract(Protocol):
+    @classmethod
+    def required_theme_keys(cls) -> frozenset[str]: ...
+    def draw(self, frame, rect, theme): ...
+```
+
+`required_theme_keys()` lets the dashboard verify at startup-time that every
+panel's theme dependencies are satisfied – missing keys raise `KeyError` with
+the offending panel named, instead of crashing mid-frame. A parametrized test
+enforces this for the live dashboard theme on every CI run.
+
+### Extending the UI
+
+To add a new panel:
+
+1. Create `obd_rs/ui/_my_panel.py` with `update(...)` and `draw(frame, rect, theme)`.
+2. Declare `required_theme_keys()` returning the subset of `THEME_KEYS` your
+   panel reads from `theme[...]`. Unknown keys are rejected by the contract test.
+3. Wire the panel into `DashboardUI` in `obd_rs/ui/_dashboard.py` and add it to
+   `ALL_PANEL_CLASSES` in `tests/test_ui.py` so it inherits the contract suite.
+4. Use `draw_text(frame, text, org, color, style)` from `obd_rs/ui/_text.py`
+   for fixed-style text. For dynamically-sized text, use `_fit_scale` /
+   `_fit_text` from `obd_rs/ui/_helpers.py`.
+5. If you introduce a new theme key, add it to `THEME_KEYS` and to
+   `DashboardUI._theme`; the validator will fail loudly otherwise.
+
+For visual regressions, add a state-specific test (fresh / stale /
+unsupported) following the patterns in `tests/test_ui.py`.
 
 ---
 
@@ -210,7 +247,7 @@ defaults. See `obd_rs/config.py` for the full list.
 |---------------------------------|---------------|---------------------------------------|
 | `OBD_RS_DATA_SOURCE`            | *(interactive)* | `simulated`, `live`, or `replay`    |
 | `OBD_RS_REPLAY_FILE`            | —             | Path to a recorded CSV for replay     |
-| `OBD_RS_WINDOW_W` / `_H`       | 1200 × 760    | Dashboard window size                 |
+| `OBD_RS_WINDOW_W` / `_H`       | 1200 × 760    | Dashboard window size (clamped to minimum 800 × 600) |
 | `OBD_RS_FPS`                    | 20            | Target render frame rate              |
 | `OBD_RS_NAME_HINTS`             | `VEEPEAK,OBD,OBDII,ELM327` | BLE device name filters |
 | `OBD_RS_POLL_PROFILE`           | `balanced`    | Poll profile: `core`, `balanced`, `full` |
@@ -231,8 +268,10 @@ defaults. See `obd_rs/config.py` for the full list.
 python -m pytest tests/ -v
 ```
 
-140 tests covering providers, scheduler, alerts, physics, BLE safety, buffer,
-data logger, replay controls, UI helpers, and app-level integration.
+179 tests covering providers, scheduler, alerts, physics, BLE safety, buffer,
+data logger, replay controls, UI panel contracts, theme validation, text
+style registry, dashboard lifecycle (multiple frame sizes, stale and
+unsupported telemetry), and app-level integration.
 
 ---
 
